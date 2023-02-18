@@ -1,9 +1,11 @@
 ﻿namespace LetterScreen;
+using LetterService;
 
 internal class Program
 {
     static void Main(string[] args)
     {
+        //Make sure that the command has the corrent number of arguments
         int size = args.Length;
         bool valid = true;
 
@@ -13,40 +15,44 @@ internal class Program
             return;
         }
 
+
         //Check if path is Valid
-        string FullPath = Path.GetFullPath(args[0]);
+        string fullPath = Path.GetFullPath(args[0]);
   
-        if (!Directory.Exists(FullPath))
+        if (!Directory.Exists(fullPath))
         {
             Console.WriteLine("Path Given not Valid");
             return;
         }
 
-        string AdmissionPath = FullPath + "\\Input\\Admission";
-        string ScholarshipPath = FullPath + "\\Input\\Scholarship";
-        string ArchivePath = FullPath + "\\Archive";
+        string admissionPath = fullPath + "\\Input\\Admission";
+        string scholarshipPath = fullPath + "\\Input\\Scholarship";
+        string archivePath = fullPath + "\\Archive";
+        string outputPath = fullPath + "\\Output";
+
 
         //Get the dates that are inputs for both Admission and Scholarship
-        List<string> AdmissionDates = new List<string>();
+        List<string> admissionDates = new List<string>();
 
-        foreach (string s in Directory.GetDirectories(AdmissionPath, "*", SearchOption.TopDirectoryOnly))
+        foreach (string s in Directory.GetDirectories(admissionPath, "*", SearchOption.TopDirectoryOnly))
         {
-            AdmissionDates.Add(s.Remove(0, AdmissionPath.Length));
+            admissionDates.Add(s.Remove(0, admissionPath.Length));
         }
 
-        List<string> ScholarshipDates = new List<string>();
+        List<string> scholarshipDates = new List<string>();
 
-        foreach (string s in Directory.GetDirectories(ScholarshipPath, "*", SearchOption.TopDirectoryOnly))
+        foreach (string s in Directory.GetDirectories(scholarshipPath, "*", SearchOption.TopDirectoryOnly))
         {
-            ScholarshipDates.Add(s.Remove(0, ScholarshipPath.Length));
+            scholarshipDates.Add(s.Remove(0, scholarshipPath.Length));
         }
 
-        string[] Dates = AdmissionDates.Union(ScholarshipDates).ToArray();
+        string[] dates = admissionDates.Union(scholarshipDates).ToArray();
+
 
         //Copy relevant dates into archive
-        foreach (string Date in Dates)
+        foreach (string date in dates)
         {
-            string newPath = Path.GetFullPath(ArchivePath + Date);
+            string newPath = Path.GetFullPath(archivePath + date);
 
             if(!Directory.Exists(newPath))
             {
@@ -54,24 +60,74 @@ internal class Program
             }
         }
 
-        archiveFiles(AdmissionPath, ArchivePath, Dates);
-    }
 
-    public static void archiveFiles(string InputPath, string OutputPath, string[] Dates)
-    {
-        foreach (string Date in Dates)
+        //Combine relavent letters into output
+        LetterService service = new LetterService();
+
+        string[][] admissionFiles = service.ArchiveFiles(admissionPath, archivePath, dates);
+        string[][] scholarshipFiles = service.ArchiveFiles(scholarshipPath, archivePath, dates);
+
+        int processed = 0;
+        List<string> processedIDs = new List<string>();
+
+        for (int date = 0; date < dates.Length; date++)
         {
-            if (Directory.Exists(InputPath + Date))
+            IDictionary<string, string> studentIDList = new Dictionary<string, string>();
+            foreach (string file in admissionFiles[date])
             {
-                string[] FilePaths = Directory.GetFiles(InputPath + Date);
-                
-                foreach (string s in FilePaths)
+                studentIDList.Add(file.Split('-')[1].Substring(0, 8), file);
+            }
+
+            foreach (string file in scholarshipFiles[date])
+            {
+                string id = file.Split('-')[1].Substring(0, 8);
+
+                if (studentIDList.ContainsKey(id))
                 {
-                    string fileName = Path.GetFileName(s);
-                    string destFile = Path.Combine(OutputPath + Date, fileName);
-                    File.Copy(s, destFile, true);
+                    service.CombineTwoLetters(admissionPath + studentIDList[id], scholarshipPath + file, outputPath + dates[date] + "\\" + id + ".txt");
+                    processed++;
+                    processedIDs.Add(id);
                 }
             }
         }
+
+
+        //Remove the now processed files from input
+        foreach(string date in dates)
+        {
+            try
+            {
+                Directory.Delete(admissionPath + date, true);
+            }
+            catch(Exception e)
+            {
+                //If directory doesn't exist here ignore and continue
+            }
+
+            try
+            {
+                Directory.Delete(scholarshipPath + date, true);
+            }
+            catch (Exception e)
+            {
+                //If directory doesn't exist here ignore and continue
+            }
+        }
+
+
+        //Print off report for the day
+        DateTime today = DateTime.Today;
+
+        Console.WriteLine(today.ToString("MM/dd/yyyy") + " Report");
+        Console.WriteLine("-------------------------------");
+        Console.WriteLine();
+        Console.WriteLine("Number of Combined Letters: " + processed);
+
+        foreach(string id in processedIDs)
+        {
+            Console.WriteLine("\t" + id);
+        }
+
+        return;
     }
 }
